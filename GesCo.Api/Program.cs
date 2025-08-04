@@ -7,33 +7,44 @@ using System.Text;
 using GesCo.Api.Data;
 using GesCo.Api.Models;
 using GesCo.Api.Services;
+using DotNetEnv;
+
+// 🔧 Cargar variables de entorno desde archivo .env
+Env.Load();
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configuración de la base de datos
-var connectionString = builder.Configuration.GetConnectionString("PostgreSQLConnection");
+// 🔧 Construir connection string desde variables de entorno
+var connectionString = $"Host={Environment.GetEnvironmentVariable("POSTGRES_HOST")};Database={Environment.GetEnvironmentVariable("POSTGRES_DATABASE")};Username={Environment.GetEnvironmentVariable("POSTGRES_USERNAME")};Password={Environment.GetEnvironmentVariable("POSTGRES_PASSWORD")};Port={Environment.GetEnvironmentVariable("POSTGRES_PORT")}";
+
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(connectionString));
 
 // Configuración de Identity
 builder.Services.AddIdentity<User, IdentityRole>(options =>
 {
-    // Configuración de contraseñas basada en appsettings.json
-    var passwordSettings = builder.Configuration.GetSection("Security:PasswordRequirements");
-    options.Password.RequiredLength = passwordSettings.GetValue<int>("MinLength", 6);
-    options.Password.RequireDigit = passwordSettings.GetValue<bool>("RequireDigit", true);
-    options.Password.RequireUppercase = passwordSettings.GetValue<bool>("RequireUppercase", true);
-    options.Password.RequireNonAlphanumeric = passwordSettings.GetValue<bool>("RequireNonAlphanumeric", false);
+    // 🔧 Configuración de contraseñas desde variables de entorno
+    var minLength = int.Parse(Environment.GetEnvironmentVariable("SECURITY_PASSWORD_MIN_LENGTH") ?? "6");
+    var requireDigit = bool.Parse(Environment.GetEnvironmentVariable("SECURITY_PASSWORD_REQUIRE_DIGIT") ?? "true");
+    var requireUppercase = bool.Parse(Environment.GetEnvironmentVariable("SECURITY_PASSWORD_REQUIRE_UPPERCASE") ?? "true");
+    var requireNonAlphanumeric = bool.Parse(Environment.GetEnvironmentVariable("SECURITY_PASSWORD_REQUIRE_NON_ALPHANUMERIC") ?? "false");
+    
+    options.Password.RequiredLength = minLength;
+    options.Password.RequireDigit = requireDigit;
+    options.Password.RequireUppercase = requireUppercase;
+    options.Password.RequireNonAlphanumeric = requireNonAlphanumeric;
     options.Password.RequireLowercase = true;
 
     // Configuración de usuario
     options.User.RequireUniqueEmail = true;
     options.User.AllowedUserNameCharacters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._@+";
 
-    // Configuración de bloqueo
-    var securitySettings = builder.Configuration.GetSection("Security");
-    options.Lockout.MaxFailedAccessAttempts = securitySettings.GetValue<int>("MaxFailedAttempts", 5);
-    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(securitySettings.GetValue<int>("LockoutMinutes", 15));
+    // 🔧 Configuración de bloqueo desde variables de entorno
+    var maxFailedAttempts = int.Parse(Environment.GetEnvironmentVariable("SECURITY_MAX_FAILED_ATTEMPTS") ?? "5");
+    var lockoutMinutes = int.Parse(Environment.GetEnvironmentVariable("SECURITY_LOCKOUT_MINUTES") ?? "15");
+    
+    options.Lockout.MaxFailedAccessAttempts = maxFailedAttempts;
+    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(lockoutMinutes);
     options.Lockout.AllowedForNewUsers = true;
 
     // Confirmación de email
@@ -42,10 +53,14 @@ builder.Services.AddIdentity<User, IdentityRole>(options =>
 .AddEntityFrameworkStores<ApplicationDbContext>()
 .AddDefaultTokenProviders();
 
-// Configuración de JWT
-var jwtSettings = builder.Configuration.GetSection("JwtSettings");
-var secretKey = jwtSettings["SecretKey"];
-var key = Encoding.ASCII.GetBytes(secretKey!);
+// 🔧 Configuración de JWT desde variables de entorno
+var secretKey = Environment.GetEnvironmentVariable("JWT_SECRET_KEY");
+if (string.IsNullOrEmpty(secretKey))
+{
+    throw new InvalidOperationException("JWT_SECRET_KEY no está configurada en las variables de entorno");
+}
+
+var key = Encoding.ASCII.GetBytes(secretKey);
 
 builder.Services.AddAuthentication(options =>
 {
@@ -61,9 +76,9 @@ builder.Services.AddAuthentication(options =>
         ValidateIssuerSigningKey = true,
         IssuerSigningKey = new SymmetricSecurityKey(key),
         ValidateIssuer = true,
-        ValidIssuer = jwtSettings["Issuer"],
+        ValidIssuer = Environment.GetEnvironmentVariable("JWT_ISSUER"),
         ValidateAudience = true,
-        ValidAudience = jwtSettings["Audience"],
+        ValidAudience = Environment.GetEnvironmentVariable("JWT_AUDIENCE"),
         ValidateLifetime = true,
         ClockSkew = TimeSpan.Zero
     };

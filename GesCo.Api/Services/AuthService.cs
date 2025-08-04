@@ -88,8 +88,8 @@ public class AuthService : IAuthService
                 // Incrementar intentos fallidos
                 user.FailedLoginAttempts++;
                 
-                var maxAttempts = _configuration.GetValue<int>("Security:MaxFailedAttempts", 5);
-                var lockoutMinutes = _configuration.GetValue<int>("Security:LockoutMinutes", 15);
+                var maxAttempts = int.Parse(Environment.GetEnvironmentVariable("SECURITY_MAX_FAILED_ATTEMPTS") ?? "5");
+                var lockoutMinutes = int.Parse(Environment.GetEnvironmentVariable("SECURITY_LOCKOUT_MINUTES") ?? "15");
 
                 if (user.FailedLoginAttempts >= maxAttempts)
                 {
@@ -283,10 +283,14 @@ public class AuthService : IAuthService
 
     private async Task<(string accessToken, string refreshToken, DateTime expiresAt)> GenerateTokensAsync(User user)
     {
-        var jwtSettings = _configuration.GetSection("JwtSettings");
-        var secretKey = jwtSettings["SecretKey"]!;
+        var secretKey = Environment.GetEnvironmentVariable("JWT_SECRET_KEY");
+        if (string.IsNullOrEmpty(secretKey))
+        {
+            throw new InvalidOperationException("JWT_SECRET_KEY no está configurada en las variables de entorno");
+        }
+        
         var key = Encoding.ASCII.GetBytes(secretKey);
-        var expiryMinutes = jwtSettings.GetValue<int>("ExpiryMinutes", 60);
+        var expiryMinutes = int.Parse(Environment.GetEnvironmentVariable("JWT_EXPIRY_MINUTES") ?? "60");
         var expiresAt = DateTime.UtcNow.AddMinutes(expiryMinutes);
 
         var claims = new[]
@@ -303,8 +307,8 @@ public class AuthService : IAuthService
         {
             Subject = new ClaimsIdentity(claims),
             Expires = expiresAt,
-            Issuer = jwtSettings["Issuer"],
-            Audience = jwtSettings["Audience"],
+            Issuer = Environment.GetEnvironmentVariable("JWT_ISSUER"),
+            Audience = Environment.GetEnvironmentVariable("JWT_AUDIENCE"),
             SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
         };
 
